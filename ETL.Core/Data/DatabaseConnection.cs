@@ -1,17 +1,20 @@
 ﻿using Microsoft.Data.SqlClient;
 
-namespace ETL.Core.Data
-{
-    public class DatabaseConnection
-    {
-        private const string ConnectionString =
-            "Server=Sandro;Database=AnalyticDB;Trusted_Connection=True;TrustServerCertificate=True;";
+namespace ETL.Core.Data;
 
-        public SqlConnection GetConnection()
-        {
-            var connection = new SqlConnection(ConnectionString);
-            connection.Open();
-            return connection;
-        }
+public class DatabaseConnection
+{
+    private readonly string _connectionString;
+
+    public DatabaseConnection(string connectionString)
+    {
+        _connectionString = connectionString;
+    }
+
+    public SqlConnection GetConnection()
+    {
+        var connection = new SqlConnection(_connectionString);
+        connection.Open();
+        return connection;
     }
 }

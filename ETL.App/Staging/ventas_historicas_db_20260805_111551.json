@@ -1,0 +1,82 @@
+[
+  {
+    "NumeroFactura": "LEG-0010",
+    "CodigoCliente": 64,
+    "CodigoProducto": 219,
+    "FechaVenta": "2023-12-05T00:00:00",
+    "Cantidad": 1,
+    "PrecioUnitario": 129.99
+  },
+  {
+    "NumeroFactura": "LEG-0009",
+    "CodigoCliente": 178,
+    "CodigoProducto": 601,
+    "FechaVenta": "2023-11-22T00:00:00",
+    "Cantidad": 2,
+    "PrecioUnitario": 340.10
+  },
+  {
+    "NumeroFactura": "LEG-0008",
+    "CodigoCliente": 22,
+    "CodigoProducto": 456,
+    "FechaVenta": "2023-10-11T00:00:00",
+    "Cantidad": 3,
+    "PrecioUnitario": 78.40
+  },
+  {
+    "NumeroFactura": "LEG-0007",
+    "CodigoCliente": 301,
+    "CodigoProducto": 88,
+    "FechaVenta": "2023-09-30T00:00:00",
+    "Cantidad": 6,
+    "PrecioUnitario": 12.25
+  },
+  {
+    "NumeroFactura": "LEG-0006",
+    "CodigoCliente": 99,
+    "CodigoProducto": 777,
+    "FechaVenta": "2023-08-15T00:00:00",
+    "Cantidad": 1,
+    "PrecioUnitario": 599.00
+  },
+  {
+    "NumeroFactura": "LEG-0005",
+    "CodigoCliente": 156,
+    "CodigoProducto": 12,
+    "FechaVenta": "2023-07-08T00:00:00",
+    "Cantidad": 4,
+    "PrecioUnitario": 45.75
+  },
+  {
+    "NumeroFactura": "LEG-0004",
+    "CodigoCliente": 203,
+    "CodigoProducto": 340,
+    "FechaVenta": "2023-06-27T00:00:00",
+    "Cantidad": 2,
+    "PrecioUnitario": 199.99
+  },
+  {
+    "NumeroFactura": "LEG-0003",
+    "CodigoCliente": 45,
+    "CodigoProducto": 980,
+    "FechaVenta": "2023-05-19T00:00:00",
+    "Cantidad": 5,
+    "PrecioUnitario": 15.50
+  },
+  {
+    "NumeroFactura": "LEG-0002",
+    "CodigoCliente": 87,
+    "CodigoProducto": 120,
+    "FechaVenta": "2023-04-02T00:00:00",
+    "Cantidad": 1,
+    "PrecioUnitario": 250.00
+  },
+  {
+    "NumeroFactura": "LEG-0001",
+    "CodigoCliente": 12,
+    "CodigoProducto": 345,
+    "FechaVenta": "2023-03-14T00:00:00",
+    "Cantidad": 3,
+    "PrecioUnitario": 89.90
+  }
+]

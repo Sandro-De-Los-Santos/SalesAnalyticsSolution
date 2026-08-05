@@ -37,4 +37,5 @@ namespace ETL.Core.Extract
         [Name("Quantity")] public int Quantity { get; set; }
         [Name("TotalPrice")] public decimal TotalPrice { get; set; }
     }
+
 }

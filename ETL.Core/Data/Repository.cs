@@ -6,7 +6,12 @@ namespace ETL.Core.Data
 {
     public class Repository
     {
-        private readonly DatabaseConnection _db = new();
+        private readonly DatabaseConnection _db;
+
+        public Repository(string connectionString)
+        {
+            _db = new DatabaseConnection(connectionString);
+        }
 
         private void EjecutarProcedimiento(string nombreProc, params SqlParameter[] parametros)
         {

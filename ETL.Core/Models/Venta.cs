@@ -10,6 +10,5 @@
         public DateTime Fecha { get; set; }
         public int? FuenteOrigen { get; set; }
         public DateTime FechaCarga { get; set; }
-        // Total NO se incluye: es columna calculada por SQL Server
     }
 }
