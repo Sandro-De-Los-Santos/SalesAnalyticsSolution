@@ -1,6 +1,13 @@
 @SalesAnalytics.Api_HostAddress = http://localhost:5170
 
-GET {{SalesAnalytics.Api_HostAddress}}/weatherforecast/
+### Disparar proceso ETL (Staging -> ODS -> Data Warehouse)
+POST {{SalesAnalytics.Api_HostAddress}}/api/etl/ejecutar
+Accept: application/json
+
+###
+
+### Consultar resumen de registros en el Data Warehouse
+GET {{SalesAnalytics.Api_HostAddress}}/api/dw/resumen
 Accept: application/json
 
 ###
