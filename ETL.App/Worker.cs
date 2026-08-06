@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
+using ETL.Core;
 using ETL.Core.Data;
 using ETL.Core.Extract;
 
@@ -15,14 +16,14 @@ public class Worker : BackgroundService
 
     public Worker(
         ILogger<Worker> logger,
-        ILoggerFactory loggerFactory,
+        ILoggerFactory _loggerFactory,
         IConfiguration config,
         IHttpClientFactory httpClientFactory,
         StagingWriter stagingWriter,
         IHostApplicationLifetime lifetime)
     {
         _logger = logger;
-        _loggerFactory = loggerFactory;
+        this._loggerFactory = _loggerFactory;
         _config = config;
         _httpClientFactory = httpClientFactory;
         _stagingWriter = stagingWriter;
@@ -31,59 +32,55 @@ public class Worker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("=== Iniciando proceso de EXTRACCIÓN ETL ===");
+        _logger.LogInformation("=== [Worker Service] Iniciando Proceso Completo ETL y Carga Data Warehouse ===");
         var cronometro = Stopwatch.StartNew();
         string basePath = _config["CsvSettings:BasePath"] ?? "CsvFiles";
 
-        var csvClientes = new CsvExtractor<CustomerCsv>(
-            Path.Combine(basePath, _config["CsvSettings:Clientes"]!),
-            _loggerFactory.CreateLogger("CsvExtractor<Cliente>"));
+        try
+        {
+            var csvClientes = new CsvExtractor<CustomerCsv>(
+                Path.Combine(basePath, _config["CsvSettings:Clientes"] ?? "customers.csv"),
+                _loggerFactory.CreateLogger("CsvExtractor<Cliente>"));
 
-        var csvProductos = new CsvExtractor<ProductCsv>(
-            Path.Combine(basePath, _config["CsvSettings:Productos"]!),
-            _loggerFactory.CreateLogger("CsvExtractor<Producto>"));
+            var csvProductos = new CsvExtractor<ProductCsv>(
+                Path.Combine(basePath, _config["CsvSettings:Productos"] ?? "products.csv"),
+                _loggerFactory.CreateLogger("CsvExtractor<Producto>"));
 
-        var csvOrdenes = new CsvExtractor<OrderCsv>(
-            Path.Combine(basePath, _config["CsvSettings:Ordenes"]!),
-            _loggerFactory.CreateLogger("CsvExtractor<Orden>"));
+            var csvOrdenes = new CsvExtractor<OrderCsv>(
+                Path.Combine(basePath, _config["CsvSettings:Ordenes"] ?? "orders.csv"),
+                _loggerFactory.CreateLogger("CsvExtractor<Orden>"));
 
-        var csvDetalles = new CsvExtractor<OrderDetailCsv>(
-            Path.Combine(basePath, _config["CsvSettings:DetalleOrdenes"]!),
-            _loggerFactory.CreateLogger("CsvExtractor<DetalleOrden>"));
+            var csvDetalles = new CsvExtractor<OrderDetailCsv>(
+                Path.Combine(basePath, _config["CsvSettings:DetalleOrdenes"] ?? "order_details.csv"),
+                _loggerFactory.CreateLogger("CsvExtractor<DetalleOrden>"));
 
-        var apiClientes = new ApiExtractor<ClienteApiRaw>(
-            _httpClientFactory.CreateClient("ExternalApi"),
-            _config["ApiSettings:ClientesEndpoint"]!,
-            _loggerFactory.CreateLogger("ApiExtractor<Cliente>"));
+            var tClientesCsv = csvClientes.ExtractAsync(stoppingToken);
+            var tProductosCsv = csvProductos.ExtractAsync(stoppingToken);
+            var tOrdenesCsv = csvOrdenes.ExtractAsync(stoppingToken);
+            var tDetallesCsv = csvDetalles.ExtractAsync(stoppingToken);
 
-        var dbVentas = new DatabaseExtractor(
-            _config.GetConnectionString("VentasLegacyDB")!,
-            _config["ExternalDbSettings:HistoricalSalesQuery"]!,
-            _loggerFactory.CreateLogger("DatabaseExtractor"));
+            await Task.WhenAll(tClientesCsv, tProductosCsv, tOrdenesCsv, tDetallesCsv);
 
-        var tClientesCsv = csvClientes.ExtractAsync(stoppingToken);
-        var tProductosCsv = csvProductos.ExtractAsync(stoppingToken);
-        var tOrdenesCsv = csvOrdenes.ExtractAsync(stoppingToken);
-        var tDetallesCsv = csvDetalles.ExtractAsync(stoppingToken);
-        var tApiClientes = apiClientes.ExtractAsync(stoppingToken);
-        var tDbVentas = dbVentas.ExtractAsync(stoppingToken);
+            await _stagingWriter.GuardarAsync("clientes_csv", tClientesCsv.Result, stoppingToken);
+            await _stagingWriter.GuardarAsync("productos_csv", tProductosCsv.Result, stoppingToken);
+            await _stagingWriter.GuardarAsync("ordenes_csv", tOrdenesCsv.Result, stoppingToken);
+            await _stagingWriter.GuardarAsync("detalle_ordenes_csv", tDetallesCsv.Result, stoppingToken);
 
-        await Task.WhenAll(tClientesCsv, tProductosCsv, tOrdenesCsv, tDetallesCsv, tApiClientes, tDbVentas);
+            _logger.LogInformation("Guardado en Staging finalizado. Ejecutando transformación y carga en DataWarehouse...");
 
-        await _stagingWriter.GuardarAsync("clientes_csv", tClientesCsv.Result, stoppingToken);
-        await _stagingWriter.GuardarAsync("productos_csv", tProductosCsv.Result, stoppingToken);
-        await _stagingWriter.GuardarAsync("ordenes_csv", tOrdenesCsv.Result, stoppingToken);
-        await _stagingWriter.GuardarAsync("detalle_ordenes_csv", tDetallesCsv.Result, stoppingToken);
-        await _stagingWriter.GuardarAsync("clientes_api", tApiClientes.Result, stoppingToken);
-        await _stagingWriter.GuardarAsync("ventas_historicas_db", tDbVentas.Result, stoppingToken);
+            string connStr = _config.GetConnectionString("DefaultConnection") ?? "Server=(localdb)\\mssqllocaldb;Database=SalesAnalyticsDB;Trusted_Connection=True;TrustServerCertificate=True;";
+            var runnerLogger = _loggerFactory.CreateLogger<EtlRunner>();
+            var etlRunner = new EtlRunner(runnerLogger, basePath, connStr);
 
-        cronometro.Stop();
-        _logger.LogInformation(
-            "=== Extracción completada en {ms} ms | CSV: {a}+{b}+{c}+{d} | API: {e} | BD: {f} registros ===",
-            cronometro.ElapsedMilliseconds,
-            tClientesCsv.Result.Count, tProductosCsv.Result.Count,
-            tOrdenesCsv.Result.Count, tDetallesCsv.Result.Count,
-            tApiClientes.Result.Count, tDbVentas.Result.Count);
+            etlRunner.Ejecutar();
+
+            cronometro.Stop();
+            _logger.LogInformation("=== [Worker Service] Proceso ETL finalizado exitosamente en {ms} ms ===", cronometro.ElapsedMilliseconds);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error durante la ejecución del Worker Service");
+        }
 
         _lifetime.StopApplication();
     }
