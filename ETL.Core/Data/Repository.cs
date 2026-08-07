@@ -133,24 +133,27 @@ namespace ETL.Core.Data
                 P("@IdLog", idLog), P("@FechaFin", DateTime.Now), P("@Procesados", procesados),
                 P("@Insertados", insertados), P("@Rechazados", rechazados), P("@Estado", estado), P("@MensajeError", error));
 
-        // ==========================================
-        // METODOS DATA WAREHOUSE (CARGA DE DIMENSIONES VentasDW)
-        // ==========================================
+        
 
         public int UpsertDimCliente(DimCliente c)
         {
-            bool tieneIdOrigen = TieneColumna("Dim_Cliente", "IdClienteOrigen");
+            bool tieneIdOrigen   = TieneColumna("Dim_Cliente", "IdClienteOrigen");
+            bool tieneFechaCarga = TieneColumna("Dim_Cliente", "FechaCarga");
             string colOrigen = tieneIdOrigen ? "IdClienteOrigen" : "IdCliente";
+
+            string updateFecha  = tieneFechaCarga ? ", Target.FechaCarga = @FechaCarga" : "";
+            string insertCols   = tieneFechaCarga ? $"{colOrigen}, NombreCompleto, Email, Ciudad, Pais, FechaCarga" : $"{colOrigen}, NombreCompleto, Email, Ciudad, Pais";
+            string insertVals   = tieneFechaCarga ? "@IdClienteOrigen, @NombreCompleto, @Email, @Ciudad, @Pais, @FechaCarga" : "@IdClienteOrigen, @NombreCompleto, @Email, @Ciudad, @Pais";
 
             string sql = $@"
                 MERGE INTO [VentasDW].[dbo].[Dim_Cliente] AS Target
                 USING (SELECT @IdClienteOrigen AS {colOrigen}) AS Source
                 ON (Target.{colOrigen} = Source.{colOrigen})
                 WHEN MATCHED THEN
-                    UPDATE SET Target.NombreCompleto = @NombreCompleto, Target.Email = @Email, Target.Ciudad = @Ciudad, Target.FechaCarga = @FechaCarga
+                    UPDATE SET Target.NombreCompleto = @NombreCompleto, Target.Email = @Email, Target.Ciudad = @Ciudad{updateFecha}
                 WHEN NOT MATCHED THEN
-                    INSERT ({colOrigen}, NombreCompleto, Email, Ciudad, Pais, FechaCarga)
-                    VALUES (@IdClienteOrigen, @NombreCompleto, @Email, @Ciudad, @Pais, @FechaCarga);";
+                    INSERT ({insertCols})
+                    VALUES ({insertVals});";
 
             using var conn = _db.GetConnection();
             using var cmd = new SqlCommand(sql, conn);
@@ -159,7 +162,7 @@ namespace ETL.Core.Data
             cmd.Parameters.AddWithValue("@Email", c.Email ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue("@Ciudad", c.Ciudad);
             cmd.Parameters.AddWithValue("@Pais", c.Pais);
-            cmd.Parameters.AddWithValue("@FechaCarga", c.FechaCarga);
+            if (tieneFechaCarga) cmd.Parameters.AddWithValue("@FechaCarga", c.FechaCarga);
             cmd.ExecuteNonQuery();
 
             return GetClienteKeyByOrigen(c.IdClienteOrigen);
@@ -167,18 +170,23 @@ namespace ETL.Core.Data
 
         public int UpsertDimProducto(DimProducto p)
         {
-            bool tieneIdOrigen = TieneColumna("Dim_Producto", "IdProductoOrigen");
+            bool tieneIdOrigen   = TieneColumna("Dim_Producto", "IdProductoOrigen");
+            bool tieneFechaCarga = TieneColumna("Dim_Producto", "FechaCarga");
             string colOrigen = tieneIdOrigen ? "IdProductoOrigen" : "IdProducto";
+
+            string updateFecha = tieneFechaCarga ? ", Target.FechaCarga = @FechaCarga" : "";
+            string insertCols  = tieneFechaCarga ? $"{colOrigen}, NombreProducto, Categoria, PrecioActual, FechaCarga" : $"{colOrigen}, NombreProducto, Categoria, PrecioActual";
+            string insertVals  = tieneFechaCarga ? "@IdProductoOrigen, @NombreProducto, @Categoria, @PrecioActual, @FechaCarga" : "@IdProductoOrigen, @NombreProducto, @Categoria, @PrecioActual";
 
             string sql = $@"
                 MERGE INTO [VentasDW].[dbo].[Dim_Producto] AS Target
                 USING (SELECT @IdProductoOrigen AS {colOrigen}) AS Source
                 ON (Target.{colOrigen} = Source.{colOrigen})
                 WHEN MATCHED THEN
-                    UPDATE SET Target.NombreProducto = @NombreProducto, Target.Categoria = @Categoria, Target.PrecioActual = @PrecioActual, Target.FechaCarga = @FechaCarga
+                    UPDATE SET Target.NombreProducto = @NombreProducto, Target.Categoria = @Categoria, Target.PrecioActual = @PrecioActual{updateFecha}
                 WHEN NOT MATCHED THEN
-                    INSERT ({colOrigen}, NombreProducto, Categoria, PrecioActual, FechaCarga)
-                    VALUES (@IdProductoOrigen, @NombreProducto, @Categoria, @PrecioActual, @FechaCarga);";
+                    INSERT ({insertCols})
+                    VALUES ({insertVals});";
 
             using var conn = _db.GetConnection();
             using var cmd = new SqlCommand(sql, conn);
@@ -186,7 +194,7 @@ namespace ETL.Core.Data
             cmd.Parameters.AddWithValue("@NombreProducto", p.NombreProducto);
             cmd.Parameters.AddWithValue("@Categoria", p.Categoria);
             cmd.Parameters.AddWithValue("@PrecioActual", p.PrecioActual);
-            cmd.Parameters.AddWithValue("@FechaCarga", p.FechaCarga);
+            if (tieneFechaCarga) cmd.Parameters.AddWithValue("@FechaCarga", p.FechaCarga);
             cmd.ExecuteNonQuery();
 
             return GetProductoKeyByOrigen(p.IdProductoOrigen);
@@ -194,45 +202,54 @@ namespace ETL.Core.Data
 
         public int UpsertDimFuenteDatos(DimFuenteDatos f)
         {
-            bool tieneIdOrigen = TieneColumna("Dim_Fuente", "IdFuenteOrigen");
-            bool tieneIdFuente = TieneColumna("Dim_Fuente", "IdFuente");
+            bool tieneIdOrigen   = TieneColumna("Dim_Fuente", "IdFuenteOrigen");
+            bool tieneIdFuente   = TieneColumna("Dim_Fuente", "IdFuente");
+            bool tieneFechaCarga = TieneColumna("Dim_Fuente", "FechaCarga");
+
+            string updateFecha = tieneFechaCarga ? ", Target.FechaCarga = @FechaCarga" : "";
 
             string sql;
             if (tieneIdOrigen)
             {
-                sql = @"
+                string insertCols = tieneFechaCarga ? "IdFuenteOrigen, NombreFuente, TipoFuente, FechaCarga" : "IdFuenteOrigen, NombreFuente, TipoFuente";
+                string insertVals = tieneFechaCarga ? "@IdFuenteOrigen, @NombreFuente, @TipoFuente, @FechaCarga" : "@IdFuenteOrigen, @NombreFuente, @TipoFuente";
+                sql = $@"
                     MERGE INTO [VentasDW].[dbo].[Dim_Fuente] AS Target
                     USING (SELECT @IdFuenteOrigen AS IdFuenteOrigen) AS Source
                     ON (Target.IdFuenteOrigen = Source.IdFuenteOrigen)
                     WHEN MATCHED THEN
-                        UPDATE SET Target.NombreFuente = @NombreFuente, Target.TipoFuente = @TipoFuente, Target.FechaCarga = @FechaCarga
+                        UPDATE SET Target.NombreFuente = @NombreFuente, Target.TipoFuente = @TipoFuente{updateFecha}
                     WHEN NOT MATCHED THEN
-                        INSERT (IdFuenteOrigen, NombreFuente, TipoFuente, FechaCarga)
-                        VALUES (@IdFuenteOrigen, @NombreFuente, @TipoFuente, @FechaCarga);";
+                        INSERT ({insertCols})
+                        VALUES ({insertVals});";
             }
             else if (tieneIdFuente)
             {
-                sql = @"
+                string insertCols = tieneFechaCarga ? "IdFuente, NombreFuente, TipoFuente, FechaCarga" : "IdFuente, NombreFuente, TipoFuente";
+                string insertVals = tieneFechaCarga ? "@IdFuenteOrigen, @NombreFuente, @TipoFuente, @FechaCarga" : "@IdFuenteOrigen, @NombreFuente, @TipoFuente";
+                sql = $@"
                     MERGE INTO [VentasDW].[dbo].[Dim_Fuente] AS Target
                     USING (SELECT @IdFuenteOrigen AS IdFuente) AS Source
                     ON (Target.IdFuente = Source.IdFuente)
                     WHEN MATCHED THEN
-                        UPDATE SET Target.NombreFuente = @NombreFuente, Target.TipoFuente = @TipoFuente, Target.FechaCarga = @FechaCarga
+                        UPDATE SET Target.NombreFuente = @NombreFuente, Target.TipoFuente = @TipoFuente{updateFecha}
                     WHEN NOT MATCHED THEN
-                        INSERT (IdFuente, NombreFuente, TipoFuente, FechaCarga)
-                        VALUES (@IdFuenteOrigen, @NombreFuente, @TipoFuente, @FechaCarga);";
+                        INSERT ({insertCols})
+                        VALUES ({insertVals});";
             }
             else
             {
-                sql = @"
+                string insertCols = tieneFechaCarga ? "NombreFuente, TipoFuente, FechaCarga" : "NombreFuente, TipoFuente";
+                string insertVals = tieneFechaCarga ? "@NombreFuente, @TipoFuente, @FechaCarga" : "@NombreFuente, @TipoFuente";
+                sql = $@"
                     MERGE INTO [VentasDW].[dbo].[Dim_Fuente] AS Target
                     USING (SELECT @NombreFuente AS NombreFuente) AS Source
                     ON (Target.NombreFuente = Source.NombreFuente)
                     WHEN MATCHED THEN
-                        UPDATE SET Target.TipoFuente = @TipoFuente, Target.FechaCarga = @FechaCarga
+                        UPDATE SET Target.TipoFuente = @TipoFuente{updateFecha}
                     WHEN NOT MATCHED THEN
-                        INSERT (NombreFuente, TipoFuente, FechaCarga)
-                        VALUES (@NombreFuente, @TipoFuente, @FechaCarga);";
+                        INSERT ({insertCols})
+                        VALUES ({insertVals});";
             }
 
             using var conn = _db.GetConnection();
@@ -240,7 +257,7 @@ namespace ETL.Core.Data
             cmd.Parameters.AddWithValue("@IdFuenteOrigen", f.IdFuenteOrigen);
             cmd.Parameters.AddWithValue("@NombreFuente", f.NombreFuente);
             cmd.Parameters.AddWithValue("@TipoFuente", f.TipoFuente);
-            cmd.Parameters.AddWithValue("@FechaCarga", f.FechaCarga);
+            if (tieneFechaCarga) cmd.Parameters.AddWithValue("@FechaCarga", f.FechaCarga);
             cmd.ExecuteNonQuery();
 
             return GetFuenteKeyByOrigen(f.IdFuenteOrigen, f.NombreFuente);
@@ -274,31 +291,40 @@ namespace ETL.Core.Data
         public void InsertFactVentas(FactVentas f)
         {
             bool tieneIdClienteKey = TieneColumna("Fact_Ventas", "IdClienteKey");
-            string colCliente = tieneIdClienteKey ? "IdClienteKey" : "ClienteKey";
+            bool tieneFechaCarga   = TieneColumna("Fact_Ventas", "FechaCarga");
+            string colCliente  = tieneIdClienteKey ? "IdClienteKey" : "ClienteKey";
             string colProducto = TieneColumna("Fact_Ventas", "IdProductoKey") ? "IdProductoKey" : "ProductoKey";
-            string colFuente = TieneColumna("Fact_Ventas", "IdFuenteKey") ? "IdFuenteKey" : "FuenteKey";
-            string colTiempo = TieneColumna("Fact_Ventas", "IdTiempoKey") ? "IdTiempoKey" : "TiempoKey";
+            string colFuente   = TieneColumna("Fact_Ventas", "IdFuenteKey")   ? "IdFuenteKey"   : "FuenteKey";
+            string colTiempo   = TieneColumna("Fact_Ventas", "IdTiempoKey")   ? "IdTiempoKey"   : "TiempoKey";
+
+            
+            string insertCols = tieneFechaCarga
+                ? $"IdOrdenOrigen, {colCliente}, {colProducto}, {colFuente}, {colTiempo}, Cantidad, PrecioUnitario, FechaCarga"
+                : $"IdOrdenOrigen, {colCliente}, {colProducto}, {colFuente}, {colTiempo}, Cantidad, PrecioUnitario";
+            string insertVals = tieneFechaCarga
+                ? "@IdOrdenOrigen, @ClienteKey, @ProductoKey, @FuenteKey, @TiempoKey, @Cantidad, @PrecioUnitario, @FechaCarga"
+                : "@IdOrdenOrigen, @ClienteKey, @ProductoKey, @FuenteKey, @TiempoKey, @Cantidad, @PrecioUnitario";
 
             string sql = $@"
                 IF NOT EXISTS (
                     SELECT 1 FROM [VentasDW].[dbo].[Fact_Ventas]
-                    WHERE {colCliente} = @ClienteKey AND {colProducto} = @ProductoKey AND {colTiempo} = @TiempoKey AND Cantidad = @Cantidad
+                    WHERE IdOrdenOrigen = @IdOrdenOrigen
                 )
                 BEGIN
-                    INSERT INTO [VentasDW].[dbo].[Fact_Ventas] ({colCliente}, {colProducto}, {colFuente}, {colTiempo}, Cantidad, PrecioUnitario, MontoTotal, FechaCarga)
-                    VALUES (@ClienteKey, @ProductoKey, @FuenteKey, @TiempoKey, @Cantidad, @PrecioUnitario, @MontoTotal, @FechaCarga);
+                    INSERT INTO [VentasDW].[dbo].[Fact_Ventas] ({insertCols})
+                    VALUES ({insertVals});
                 END";
 
             using var conn = _db.GetConnection();
             using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@IdOrdenOrigen", f.IdOrdenOrigen);
             cmd.Parameters.AddWithValue("@ClienteKey", f.ClienteKey);
             cmd.Parameters.AddWithValue("@ProductoKey", f.ProductoKey);
             cmd.Parameters.AddWithValue("@FuenteKey", f.FuenteKey);
             cmd.Parameters.AddWithValue("@TiempoKey", f.TiempoKey);
             cmd.Parameters.AddWithValue("@Cantidad", f.Cantidad);
             cmd.Parameters.AddWithValue("@PrecioUnitario", f.PrecioUnitario);
-            cmd.Parameters.AddWithValue("@MontoTotal", f.MontoTotal);
-            cmd.Parameters.AddWithValue("@FechaCarga", f.FechaCarga);
+            if (tieneFechaCarga) cmd.Parameters.AddWithValue("@FechaCarga", f.FechaCarga);
             cmd.ExecuteNonQuery();
         }
 

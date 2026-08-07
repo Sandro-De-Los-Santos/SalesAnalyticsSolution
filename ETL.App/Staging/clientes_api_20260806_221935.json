@@ -1,0 +1,82 @@
+[
+  {
+    "Id": 1,
+    "Name": "Leanne Graham",
+    "Email": "Sincere@april.biz",
+    "Address": {
+      "City": "Gwenborough"
+    }
+  },
+  {
+    "Id": 2,
+    "Name": "Ervin Howell",
+    "Email": "Shanna@melissa.tv",
+    "Address": {
+      "City": "Wisokyburgh"
+    }
+  },
+  {
+    "Id": 3,
+    "Name": "Clementine Bauch",
+    "Email": "Nathan@yesenia.net",
+    "Address": {
+      "City": "McKenziehaven"
+    }
+  },
+  {
+    "Id": 4,
+    "Name": "Patricia Lebsack",
+    "Email": "Julianne.OConner@kory.org",
+    "Address": {
+      "City": "South Elvis"
+    }
+  },
+  {
+    "Id": 5,
+    "Name": "Chelsey Dietrich",
+    "Email": "Lucio_Hettinger@annie.ca",
+    "Address": {
+      "City": "Roscoeview"
+    }
+  },
+  {
+    "Id": 6,
+    "Name": "Mrs. Dennis Schulist",
+    "Email": "Karley_Dach@jasper.info",
+    "Address": {
+      "City": "South Christy"
+    }
+  },
+  {
+    "Id": 7,
+    "Name": "Kurtis Weissnat",
+    "Email": "Telly.Hoeger@billy.biz",
+    "Address": {
+      "City": "Howemouth"
+    }
+  },
+  {
+    "Id": 8,
+    "Name": "Nicholas Runolfsdottir V",
+    "Email": "Sherwood@rosamond.me",
+    "Address": {
+      "City": "Aliyaview"
+    }
+  },
+  {
+    "Id": 9,
+    "Name": "Glenna Reichert",
+    "Email": "Chaim_McDermott@dana.io",
+    "Address": {
+      "City": "Bartholomebury"
+    }
+  },
+  {
+    "Id": 10,
+    "Name": "Clementina DuBuque",
+    "Email": "Rey.Padberg@karina.biz",
+    "Address": {
+      "City": "Lebsackbury"
+    }
+  }
+]

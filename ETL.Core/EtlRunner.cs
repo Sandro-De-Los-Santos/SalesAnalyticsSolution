@@ -21,9 +21,6 @@ public class EtlRunner
         _repo = new Repository(connectionString);
     }
 
-    /// <summary>
-    /// Carga las dimensiones y tabla de hechos en VentasDW leyendo los datos ya existentes en AnalyticDB.
-    /// </summary>
     public void CargarSoloDataWarehouse()
     {
         _logger.LogInformation("Iniciando Carga de Dimensiones al Data Warehouse (VentasDW) desde AnalyticDB: {time}", DateTimeOffset.Now);
@@ -61,7 +58,7 @@ public class EtlRunner
 
         try
         {
-            // Carga de dimensiones en VentasDW usando la data relacional de AnalyticDB
+
             CargarDataWarehouse();
 
             _repo.ActualizarLogFin(idLog, totalProcesados, totalInsertados, totalRechazados, "COMPLETADO");

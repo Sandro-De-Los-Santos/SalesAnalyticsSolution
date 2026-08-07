@@ -49,7 +49,7 @@ public class Worker : BackgroundService
 
         var sw1 = Stopwatch.StartNew();
 
-        // --- Fuente 1: Archivos CSV ---
+        
         _logger.LogInformation("Iniciando extraccion CSV: {path}", basePath);
 
         var csvClientes  = new CsvExtractor<CustomerCsv>(Path.Combine(basePath, _config["CsvSettings:Clientes"]  ?? "customers.csv"),     _loggerFactory.CreateLogger("CsvExtractor<Cliente>"));
@@ -71,7 +71,7 @@ public class Worker : BackgroundService
         int totalCsv = tCli.Result.Count + tPro.Result.Count + tOrd.Result.Count + tDet.Result.Count;
         _logger.LogInformation("");
 
-        // --- Fuente 2: API Externa ---
+        
         _logger.LogInformation("Iniciando extraccion API: {endpoint}", _config["ApiSettings:ClientesEndpoint"]);
 
         var apiClientes   = new ApiExtractor<ClienteApiRaw>(
@@ -86,7 +86,7 @@ public class Worker : BackgroundService
 
         _logger.LogInformation("");
 
-        // --- Fuente 3: Base de Datos Relacional AnalyticDB ---
+        
         _logger.LogInformation("Iniciando extraccion BD: AnalyticDB");
 
         int nClientes   = repo.ContarClientesAnalytic();
@@ -108,16 +108,14 @@ public class Worker : BackgroundService
         _logger.LogInformation("=== Extraccion completada en {ms} ms | CSV: {csv} | API: {api} | BD: {bd} registros ===",
             sw1.ElapsedMilliseconds, totalCsv, resultadoApi.Count, totalBd);
 
-        // ====================================================================================
-        // SEPARACION VISUAL CLARA PARA LAS DOS PRÁCTICAS
-        // ====================================================================================
+       
         _logger.LogInformation("");
         _logger.LogInformation("");
         _logger.LogInformation("");
 
-        // ====================================================================================
+        // 
         // PROCESO 2: CARGA DE DIMENSIONES AnalyticDB → VentasDW
-        // ====================================================================================
+        // 
         _logger.LogInformation("================================================================================");
         _logger.LogInformation("             PROCESO 2: CARGA DE DIMENSIONES → VentasDW");
         _logger.LogInformation("================================================================================");
@@ -131,10 +129,25 @@ public class Worker : BackgroundService
         var resumenDW = repo.ObtenerResumenDW();
         sw2.Stop();
 
+        // ── Resumen final VentasDW ──────────────────────────────────────────
         _logger.LogInformation("");
-        _logger.LogInformation("=== Carga de dimensiones completada en {ms} ms | {r} ===",
-            sw2.ElapsedMilliseconds,
-            string.Join(" | ", resumenDW.Select(kv => $"{kv.Key}: {kv.Value}")));
+        _logger.LogInformation("================================================================================");
+        _logger.LogInformation("          RESUMEN FINAL - VentasDW (estado actual tras la carga)");
+        _logger.LogInformation("================================================================================");
+        _logger.LogInformation("");
+        _logger.LogInformation("  {tabla,-22} {registros,10}", "TABLA", "REGISTROS");
+        _logger.LogInformation("  {sep}", new string('-', 36));
+        foreach (var kv in resumenDW)
+            _logger.LogInformation("  {tabla,-22} {registros,10}", kv.Key, kv.Value);
+        _logger.LogInformation("  {sep}", new string('-', 36));
+        _logger.LogInformation("  {tabla,-22} {registros,10}", "TOTAL REGISTROS DW", resumenDW.Values.Sum());
+        _logger.LogInformation("");
+        _logger.LogInformation("  Tiempo de carga : {ms} ms", sw2.ElapsedMilliseconds);
+        _logger.LogInformation("  Timestamp       : {ts}", DateTimeOffset.Now);
+        _logger.LogInformation("");
+        _logger.LogInformation("================================================================================");
+        _logger.LogInformation("                   CARGA DE DIMENSIONES COMPLETADA");
+        _logger.LogInformation("================================================================================");
 
         _lifetime.StopApplication();
     }

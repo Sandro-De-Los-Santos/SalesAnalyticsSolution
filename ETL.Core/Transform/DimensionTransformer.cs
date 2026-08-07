@@ -65,13 +65,13 @@ namespace ETL.Core.Transform
         {
             return new FactVentas
             {
+                IdOrdenOrigen = v.IdVenta,      
                 ClienteKey = clienteKey,
                 ProductoKey = productoKey,
                 FuenteKey = fuenteKey,
                 TiempoKey = tiempoKey,
                 Cantidad = v.Cantidad,
                 PrecioUnitario = v.Precio,
-                MontoTotal = v.Cantidad * v.Precio,
                 FechaCarga = DateTime.Now
             };
         }
