@@ -39,10 +39,14 @@ public class Worker : BackgroundService
         var repo      = new Repository(connStr);
         var runnerLog = _loggerFactory.CreateLogger<EtlRunner>();
 
-        // =================================================================
-        // PROCESO 1: EXTRACCION DE DATOS DESDE TODAS LAS FUENTES
-        // =================================================================
-        _logger.LogInformation("=== PROCESO 1: EXTRACCION DE DATOS ===");
+        // ====================================================================================
+        // PROCESO 1: EXTRACCION DE DATOS DESDE TODAS LAS FUENTES (CSV, API, BD RELACIONAL)
+        // ====================================================================================
+        _logger.LogInformation("================================================================================");
+        _logger.LogInformation("                    PROCESO 1: EXTRACCION DE DATOS");
+        _logger.LogInformation("================================================================================");
+        _logger.LogInformation("");
+
         var sw1 = Stopwatch.StartNew();
 
         // --- Fuente 1: Archivos CSV ---
@@ -65,6 +69,7 @@ public class Worker : BackgroundService
         await _stagingWriter.GuardarAsync("detalle_ordenes_csv",tDet.Result, stoppingToken);
 
         int totalCsv = tCli.Result.Count + tPro.Result.Count + tOrd.Result.Count + tDet.Result.Count;
+        _logger.LogInformation("");
 
         // --- Fuente 2: API Externa ---
         _logger.LogInformation("Iniciando extraccion API: {endpoint}", _config["ApiSettings:ClientesEndpoint"]);
@@ -78,6 +83,8 @@ public class Worker : BackgroundService
 
         if (resultadoApi.Count > 0)
             await _stagingWriter.GuardarAsync("clientes_api", resultadoApi, stoppingToken);
+
+        _logger.LogInformation("");
 
         // --- Fuente 3: Base de Datos Relacional AnalyticDB ---
         _logger.LogInformation("Iniciando extraccion BD: AnalyticDB");
@@ -97,13 +104,25 @@ public class Worker : BackgroundService
         int totalBd = nClientes + nProductos + nCategorias + nVentas + nFuentes;
 
         sw1.Stop();
+        _logger.LogInformation("");
         _logger.LogInformation("=== Extraccion completada en {ms} ms | CSV: {csv} | API: {api} | BD: {bd} registros ===",
             sw1.ElapsedMilliseconds, totalCsv, resultadoApi.Count, totalBd);
 
-        // =================================================================
+        // ====================================================================================
+        // SEPARACION VISUAL CLARA PARA LAS DOS PRÁCTICAS
+        // ====================================================================================
+        _logger.LogInformation("");
+        _logger.LogInformation("");
+        _logger.LogInformation("");
+
+        // ====================================================================================
         // PROCESO 2: CARGA DE DIMENSIONES AnalyticDB → VentasDW
-        // =================================================================
-        _logger.LogInformation("=== PROCESO 2: CARGA DE DIMENSIONES → VentasDW ===");
+        // ====================================================================================
+        _logger.LogInformation("================================================================================");
+        _logger.LogInformation("             PROCESO 2: CARGA DE DIMENSIONES → VentasDW");
+        _logger.LogInformation("================================================================================");
+        _logger.LogInformation("");
+
         var sw2 = Stopwatch.StartNew();
 
         var etlRunner = new EtlRunner(runnerLog, basePath, connStr);
@@ -112,6 +131,7 @@ public class Worker : BackgroundService
         var resumenDW = repo.ObtenerResumenDW();
         sw2.Stop();
 
+        _logger.LogInformation("");
         _logger.LogInformation("=== Carga de dimensiones completada en {ms} ms | {r} ===",
             sw2.ElapsedMilliseconds,
             string.Join(" | ", resumenDW.Select(kv => $"{kv.Key}: {kv.Value}")));

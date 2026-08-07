@@ -29,6 +29,22 @@ namespace ETL.Core.Data
             return cmd.ExecuteScalar();
         }
 
+        private bool TieneColumna(string tabla, string columna)
+        {
+            try
+            {
+                string sql = @"
+                    SELECT COUNT(1) 
+                    FROM [VentasDW].INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_NAME = @t AND COLUMN_NAME = @c";
+                return Convert.ToInt32(ConsultarEscalar(sql, P("@t", tabla), P("@c", columna)) ?? 0) > 0;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         public int GetNextId(string tabla, string columnaId)
         {
             string sql = $"SELECT ISNULL(MAX({columnaId}), 0) + 1 FROM {tabla}";
@@ -123,14 +139,17 @@ namespace ETL.Core.Data
 
         public int UpsertDimCliente(DimCliente c)
         {
-            string sql = @"
+            bool tieneIdOrigen = TieneColumna("Dim_Cliente", "IdClienteOrigen");
+            string colOrigen = tieneIdOrigen ? "IdClienteOrigen" : "IdCliente";
+
+            string sql = $@"
                 MERGE INTO [VentasDW].[dbo].[Dim_Cliente] AS Target
-                USING (SELECT @IdClienteOrigen AS IdClienteOrigen) AS Source
-                ON (Target.IdClienteOrigen = Source.IdClienteOrigen)
+                USING (SELECT @IdClienteOrigen AS {colOrigen}) AS Source
+                ON (Target.{colOrigen} = Source.{colOrigen})
                 WHEN MATCHED THEN
                     UPDATE SET Target.NombreCompleto = @NombreCompleto, Target.Email = @Email, Target.Ciudad = @Ciudad, Target.FechaCarga = @FechaCarga
                 WHEN NOT MATCHED THEN
-                    INSERT (IdClienteOrigen, NombreCompleto, Email, Ciudad, Pais, FechaCarga)
+                    INSERT ({colOrigen}, NombreCompleto, Email, Ciudad, Pais, FechaCarga)
                     VALUES (@IdClienteOrigen, @NombreCompleto, @Email, @Ciudad, @Pais, @FechaCarga);";
 
             using var conn = _db.GetConnection();
@@ -148,14 +167,17 @@ namespace ETL.Core.Data
 
         public int UpsertDimProducto(DimProducto p)
         {
-            string sql = @"
+            bool tieneIdOrigen = TieneColumna("Dim_Producto", "IdProductoOrigen");
+            string colOrigen = tieneIdOrigen ? "IdProductoOrigen" : "IdProducto";
+
+            string sql = $@"
                 MERGE INTO [VentasDW].[dbo].[Dim_Producto] AS Target
-                USING (SELECT @IdProductoOrigen AS IdProductoOrigen) AS Source
-                ON (Target.IdProductoOrigen = Source.IdProductoOrigen)
+                USING (SELECT @IdProductoOrigen AS {colOrigen}) AS Source
+                ON (Target.{colOrigen} = Source.{colOrigen})
                 WHEN MATCHED THEN
                     UPDATE SET Target.NombreProducto = @NombreProducto, Target.Categoria = @Categoria, Target.PrecioActual = @PrecioActual, Target.FechaCarga = @FechaCarga
                 WHEN NOT MATCHED THEN
-                    INSERT (IdProductoOrigen, NombreProducto, Categoria, PrecioActual, FechaCarga)
+                    INSERT ({colOrigen}, NombreProducto, Categoria, PrecioActual, FechaCarga)
                     VALUES (@IdProductoOrigen, @NombreProducto, @Categoria, @PrecioActual, @FechaCarga);";
 
             using var conn = _db.GetConnection();
@@ -172,15 +194,46 @@ namespace ETL.Core.Data
 
         public int UpsertDimFuenteDatos(DimFuenteDatos f)
         {
-            string sql = @"
-                MERGE INTO [VentasDW].[dbo].[Dim_Fuente] AS Target
-                USING (SELECT @IdFuenteOrigen AS IdFuenteOrigen) AS Source
-                ON (Target.IdFuenteOrigen = Source.IdFuenteOrigen)
-                WHEN MATCHED THEN
-                    UPDATE SET Target.NombreFuente = @NombreFuente, Target.TipoFuente = @TipoFuente, Target.FechaCarga = @FechaCarga
-                WHEN NOT MATCHED THEN
-                    INSERT (IdFuenteOrigen, NombreFuente, TipoFuente, FechaCarga)
-                    VALUES (@IdFuenteOrigen, @NombreFuente, @TipoFuente, @FechaCarga);";
+            bool tieneIdOrigen = TieneColumna("Dim_Fuente", "IdFuenteOrigen");
+            bool tieneIdFuente = TieneColumna("Dim_Fuente", "IdFuente");
+
+            string sql;
+            if (tieneIdOrigen)
+            {
+                sql = @"
+                    MERGE INTO [VentasDW].[dbo].[Dim_Fuente] AS Target
+                    USING (SELECT @IdFuenteOrigen AS IdFuenteOrigen) AS Source
+                    ON (Target.IdFuenteOrigen = Source.IdFuenteOrigen)
+                    WHEN MATCHED THEN
+                        UPDATE SET Target.NombreFuente = @NombreFuente, Target.TipoFuente = @TipoFuente, Target.FechaCarga = @FechaCarga
+                    WHEN NOT MATCHED THEN
+                        INSERT (IdFuenteOrigen, NombreFuente, TipoFuente, FechaCarga)
+                        VALUES (@IdFuenteOrigen, @NombreFuente, @TipoFuente, @FechaCarga);";
+            }
+            else if (tieneIdFuente)
+            {
+                sql = @"
+                    MERGE INTO [VentasDW].[dbo].[Dim_Fuente] AS Target
+                    USING (SELECT @IdFuenteOrigen AS IdFuente) AS Source
+                    ON (Target.IdFuente = Source.IdFuente)
+                    WHEN MATCHED THEN
+                        UPDATE SET Target.NombreFuente = @NombreFuente, Target.TipoFuente = @TipoFuente, Target.FechaCarga = @FechaCarga
+                    WHEN NOT MATCHED THEN
+                        INSERT (IdFuente, NombreFuente, TipoFuente, FechaCarga)
+                        VALUES (@IdFuenteOrigen, @NombreFuente, @TipoFuente, @FechaCarga);";
+            }
+            else
+            {
+                sql = @"
+                    MERGE INTO [VentasDW].[dbo].[Dim_Fuente] AS Target
+                    USING (SELECT @NombreFuente AS NombreFuente) AS Source
+                    ON (Target.NombreFuente = Source.NombreFuente)
+                    WHEN MATCHED THEN
+                        UPDATE SET Target.TipoFuente = @TipoFuente, Target.FechaCarga = @FechaCarga
+                    WHEN NOT MATCHED THEN
+                        INSERT (NombreFuente, TipoFuente, FechaCarga)
+                        VALUES (@NombreFuente, @TipoFuente, @FechaCarga);";
+            }
 
             using var conn = _db.GetConnection();
             using var cmd = new SqlCommand(sql, conn);
@@ -190,15 +243,18 @@ namespace ETL.Core.Data
             cmd.Parameters.AddWithValue("@FechaCarga", f.FechaCarga);
             cmd.ExecuteNonQuery();
 
-            return GetFuenteKeyByOrigen(f.IdFuenteOrigen);
+            return GetFuenteKeyByOrigen(f.IdFuenteOrigen, f.NombreFuente);
         }
 
         public void UpsertDimTiempo(DimTiempo t)
         {
-            string sql = @"
-                IF NOT EXISTS (SELECT 1 FROM [VentasDW].[dbo].[Dim_Tiempo] WHERE IdTiempoKey = @IdTiempoKey)
+            bool tieneIdKey = TieneColumna("Dim_Tiempo", "IdTiempoKey");
+            string colKey = tieneIdKey ? "IdTiempoKey" : "TiempoKey";
+
+            string sql = $@"
+                IF NOT EXISTS (SELECT 1 FROM [VentasDW].[dbo].[Dim_Tiempo] WHERE {colKey} = @IdTiempoKey)
                 BEGIN
-                    INSERT INTO [VentasDW].[dbo].[Dim_Tiempo] (IdTiempoKey, Fecha, Anio, Trimestre, Mes, NombreMes, Dia, DiaSemana)
+                    INSERT INTO [VentasDW].[dbo].[Dim_Tiempo] ({colKey}, Fecha, Anio, Trimestre, Mes, NombreMes, Dia, DiaSemana)
                     VALUES (@IdTiempoKey, @Fecha, @Anio, @Trimestre, @Mes, @NombreMes, @Dia, @DiaSemana);
                 END";
 
@@ -217,13 +273,19 @@ namespace ETL.Core.Data
 
         public void InsertFactVentas(FactVentas f)
         {
-            string sql = @"
+            bool tieneIdClienteKey = TieneColumna("Fact_Ventas", "IdClienteKey");
+            string colCliente = tieneIdClienteKey ? "IdClienteKey" : "ClienteKey";
+            string colProducto = TieneColumna("Fact_Ventas", "IdProductoKey") ? "IdProductoKey" : "ProductoKey";
+            string colFuente = TieneColumna("Fact_Ventas", "IdFuenteKey") ? "IdFuenteKey" : "FuenteKey";
+            string colTiempo = TieneColumna("Fact_Ventas", "IdTiempoKey") ? "IdTiempoKey" : "TiempoKey";
+
+            string sql = $@"
                 IF NOT EXISTS (
                     SELECT 1 FROM [VentasDW].[dbo].[Fact_Ventas]
-                    WHERE IdClienteKey = @ClienteKey AND IdProductoKey = @ProductoKey AND IdTiempoKey = @TiempoKey AND Cantidad = @Cantidad
+                    WHERE {colCliente} = @ClienteKey AND {colProducto} = @ProductoKey AND {colTiempo} = @TiempoKey AND Cantidad = @Cantidad
                 )
                 BEGIN
-                    INSERT INTO [VentasDW].[dbo].[Fact_Ventas] (IdClienteKey, IdProductoKey, IdFuenteKey, IdTiempoKey, Cantidad, PrecioUnitario, MontoTotal, FechaCarga)
+                    INSERT INTO [VentasDW].[dbo].[Fact_Ventas] ({colCliente}, {colProducto}, {colFuente}, {colTiempo}, Cantidad, PrecioUnitario, MontoTotal, FechaCarga)
                     VALUES (@ClienteKey, @ProductoKey, @FuenteKey, @TiempoKey, @Cantidad, @PrecioUnitario, @MontoTotal, @FechaCarga);
                 END";
 
@@ -242,20 +304,44 @@ namespace ETL.Core.Data
 
         public int GetClienteKeyByOrigen(int idOrigen)
         {
-            object? res = ConsultarEscalar("SELECT IdClienteKey FROM [VentasDW].[dbo].[Dim_Cliente] WHERE IdClienteOrigen = @id", P("@id", idOrigen));
+            bool tieneIdKey = TieneColumna("Dim_Cliente", "IdClienteKey");
+            string colKey = tieneIdKey ? "IdClienteKey" : "ClienteKey";
+            bool tieneIdOrigen = TieneColumna("Dim_Cliente", "IdClienteOrigen");
+            string colOrigen = tieneIdOrigen ? "IdClienteOrigen" : "IdCliente";
+
+            object? res = ConsultarEscalar($"SELECT TOP 1 {colKey} FROM [VentasDW].[dbo].[Dim_Cliente] WHERE {colOrigen} = @id", P("@id", idOrigen));
             return res != null ? Convert.ToInt32(res) : 0;
         }
 
         public int GetProductoKeyByOrigen(int idOrigen)
         {
-            object? res = ConsultarEscalar("SELECT IdProductoKey FROM [VentasDW].[dbo].[Dim_Producto] WHERE IdProductoOrigen = @id", P("@id", idOrigen));
+            bool tieneIdKey = TieneColumna("Dim_Producto", "IdProductoKey");
+            string colKey = tieneIdKey ? "IdProductoKey" : "ProductoKey";
+            bool tieneIdOrigen = TieneColumna("Dim_Producto", "IdProductoOrigen");
+            string colOrigen = tieneIdOrigen ? "IdProductoOrigen" : "IdProducto";
+
+            object? res = ConsultarEscalar($"SELECT TOP 1 {colKey} FROM [VentasDW].[dbo].[Dim_Producto] WHERE {colOrigen} = @id", P("@id", idOrigen));
             return res != null ? Convert.ToInt32(res) : 0;
         }
 
-        public int GetFuenteKeyByOrigen(int idFuenteOrigen)
+        public int GetFuenteKeyByOrigen(int idFuenteOrigen, string nombreFuente = "")
         {
-            object? res = ConsultarEscalar("SELECT IdFuenteKey FROM [VentasDW].[dbo].[Dim_Fuente] WHERE IdFuenteOrigen = @id", P("@id", idFuenteOrigen));
-            return res != null ? Convert.ToInt32(res) : 0;
+            bool tieneIdFuenteKey = TieneColumna("Dim_Fuente", "IdFuenteKey");
+            string colKey = tieneIdFuenteKey ? "IdFuenteKey" : "FuenteKey";
+
+            bool tieneIdOrigen = TieneColumna("Dim_Fuente", "IdFuenteOrigen");
+            bool tieneIdFuente = TieneColumna("Dim_Fuente", "IdFuente");
+
+            string sql;
+            if (tieneIdOrigen)
+                sql = $"SELECT TOP 1 {colKey} FROM [VentasDW].[dbo].[Dim_Fuente] WHERE IdFuenteOrigen = @id";
+            else if (tieneIdFuente)
+                sql = $"SELECT TOP 1 {colKey} FROM [VentasDW].[dbo].[Dim_Fuente] WHERE IdFuente = @id";
+            else
+                sql = $"SELECT TOP 1 {colKey} FROM [VentasDW].[dbo].[Dim_Fuente] WHERE NombreFuente = @n";
+
+            object? res = ConsultarEscalar(sql, P("@id", idFuenteOrigen), P("@n", nombreFuente));
+            return res != null ? Convert.ToInt32(res) : 1;
         }
 
         public List<FuenteDatos> ObtenerFuentesDatos()
@@ -356,7 +442,6 @@ namespace ETL.Core.Data
             return resumen;
         }
 
-        // Conteos rapidos de AnalyticDB (para reporte de extraccion)
         public int ContarClientesAnalytic()    => Convert.ToInt32(ConsultarEscalar("SELECT COUNT(1) FROM [AnalyticDB].[dbo].[Clientes]") ?? 0);
         public int ContarProductosAnalytic()   => Convert.ToInt32(ConsultarEscalar("SELECT COUNT(1) FROM [AnalyticDB].[dbo].[Productos]") ?? 0);
         public int ContarCategoriasAnalytic()  => Convert.ToInt32(ConsultarEscalar("SELECT COUNT(1) FROM [AnalyticDB].[dbo].[Categorias]") ?? 0);
