@@ -1,7 +1,7 @@
 using ETL.Core.Data;
 using Microsoft.AspNetCore.Mvc;
 
-namespace SalesAnalytics.Api.Controllers
+namespace ETL.Api.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
@@ -19,12 +19,12 @@ namespace SalesAnalytics.Api.Controllers
         {
             try
             {
-                var connStr = _config.GetConnectionString("DefaultConnection") ?? "Server=(localdb)\\mssqllocaldb;Database=SalesAnalyticsDB;Trusted_Connection=True;TrustServerCertificate=True;";
+                var connStr = _config.GetConnectionString("AnalyticDB") ?? "Server=Sandro;Database=AnalyticDB;Trusted_Connection=True;TrustServerCertificate=True;";
                 var repo = new Repository(connStr);
                 var resumen = repo.ObtenerResumenDW();
                 return Ok(new
                 {
-                    baseDatos = "DataWarehouse - SalesAnalyticsDB",
+                    baseDatos = "DataWarehouse - VentasDW",
                     fechaConsulta = DateTime.Now,
                     tablas = resumen
                 });

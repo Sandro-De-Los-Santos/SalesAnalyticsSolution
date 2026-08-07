@@ -2,7 +2,7 @@ using ETL.Core;
 using ETL.Core.Data;
 using Microsoft.AspNetCore.Mvc;
 
-namespace SalesAnalytics.Api.Controllers
+namespace ETL.Api.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
@@ -22,15 +22,15 @@ namespace SalesAnalytics.Api.Controllers
         {
             try
             {
-                var connStr = _config.GetConnectionString("DefaultConnection") ?? "Server=(localdb)\\mssqllocaldb;Database=SalesAnalyticsDB;Trusted_Connection=True;TrustServerCertificate=True;";
+                var connStr = _config.GetConnectionString("AnalyticDB") ?? "Server=Sandro;Database=AnalyticDB;Trusted_Connection=True;TrustServerCertificate=True;";
                 var csvPath = _config["StagingSettings:CsvBasePath"] ?? Path.Combine(Directory.GetCurrentDirectory(), "..", "ETL.App", "CsvFiles");
 
                 var runner = new EtlRunner(_loggerEtl, csvPath, connStr);
-                runner.Ejecutar();
+                runner.CargarSoloDataWarehouse();
 
                 return Ok(new
                 {
-                    mensaje = "Proceso ETL (Staging -> ODS -> DataWarehouse) ejecutado exitosamente.",
+                    mensaje = "Proceso de carga de Dimensiones al Data Warehouse (VentasDW) ejecutado exitosamente.",
                     fecha = DateTime.Now
                 });
             }

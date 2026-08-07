@@ -1,0 +1,13 @@
+@ETL.Api_HostAddress = http://localhost:5170
+
+### Disparar proceso ETL (Carga de Dimensiones a VentasDW)
+POST {{ETL.Api_HostAddress}}/api/etl/ejecutar
+Accept: application/json
+
+###
+
+### Consultar resumen de registros en el Data Warehouse (VentasDW)
+GET {{ETL.Api_HostAddress}}/api/dw/resumen
+Accept: application/json
+
+###
