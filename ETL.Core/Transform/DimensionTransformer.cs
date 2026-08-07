@@ -10,11 +10,10 @@ namespace ETL.Core.Transform
             return new DimCliente
             {
                 IdClienteOrigen = c.IdCliente,
-                Nombre = c.Nombre.Trim(),
+                NombreCompleto = c.Nombre.Trim(),
                 Email = (c.Email ?? string.Empty).ToLowerInvariant().Trim(),
-                Region = string.IsNullOrWhiteSpace(c.Region) ? "Desconocida" : c.Region.Trim(),
-                Activo = c.Activo,
-                FuenteOrigen = c.FuenteOrigen?.ToString() ?? "CSV",
+                Ciudad = string.IsNullOrWhiteSpace(c.Region) ? "Desconocida" : c.Region.Trim(),
+                Pais = "Desconocido",
                 FechaCarga = DateTime.Now
             };
         }
@@ -24,11 +23,9 @@ namespace ETL.Core.Transform
             return new DimProducto
             {
                 IdProductoOrigen = p.IdProducto,
-                Nombre = p.Nombre.Trim(),
+                NombreProducto = p.Nombre.Trim(),
                 Categoria = string.IsNullOrWhiteSpace(nombreCategoria) ? "General" : nombreCategoria.Trim(),
-                Precio = p.Precio,
-                Activo = p.Activo,
-                FuenteOrigen = p.FuenteOrigen?.ToString() ?? "CSV",
+                PrecioActual = p.Precio,
                 FechaCarga = DateTime.Now
             };
         }
@@ -53,15 +50,14 @@ namespace ETL.Core.Transform
 
             return new DimTiempo
             {
-                TiempoKey = tiempoKey,
+                IdTiempoKey = tiempoKey,
                 Fecha = fecha.Date,
                 Anio = fecha.Year,
                 Trimestre = ((fecha.Month - 1) / 3) + 1,
                 Mes = fecha.Month,
                 NombreMes = cultureEs.DateTimeFormat.GetMonthName(fecha.Month),
                 Dia = fecha.Day,
-                DiaSemana = cultureEs.DateTimeFormat.GetDayName(fecha.DayOfWeek),
-                EsFinDeSemana = fecha.DayOfWeek == DayOfWeek.Saturday || fecha.DayOfWeek == DayOfWeek.Sunday
+                DiaSemana = cultureEs.DateTimeFormat.GetDayName(fecha.DayOfWeek)
             };
         }
 

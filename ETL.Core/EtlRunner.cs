@@ -21,9 +21,28 @@ public class EtlRunner
         _repo = new Repository(connectionString);
     }
 
+    /// <summary>
+    /// Carga las dimensiones y tabla de hechos en VentasDW leyendo los datos ya existentes en AnalyticDB.
+    /// </summary>
+    public void CargarSoloDataWarehouse()
+    {
+        _logger.LogInformation("Iniciando Carga de Dimensiones al Data Warehouse (VentasDW) desde AnalyticDB: {time}", DateTimeOffset.Now);
+
+        try
+        {
+            CargarDataWarehouse();
+            _logger.LogInformation("Carga al Data Warehouse (VentasDW) completada exitosamente.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error durante la carga al Data Warehouse (VentasDW)");
+            throw;
+        }
+    }
+
     public void Ejecutar()
     {
-        _logger.LogInformation("Iniciando proceso ETL (Staging -> ODS -> DataWarehouse): {time}", DateTimeOffset.Now);
+        _logger.LogInformation("Iniciando proceso completo ETL (AnalyticDB -> VentasDW): {time}", DateTimeOffset.Now);
 
         int idTipoFuenteCsv = _repo.BuscarTipoFuentePorNombre("CSV")
             ?? _repo.InsertTipoFuente(new TipoFuente { Nombre = "CSV", Descripcion = "Archivos planos CSV" });
@@ -42,99 +61,22 @@ public class EtlRunner
 
         try
         {
-            // 1. EXTRACCION DE ARCHIVOS CSV
-            var csvClientes = new CsvExtractor<CustomerCsv>(
-                Path.Combine(_csvBasePath, "customers.csv"), _logger);
-            var csvProductos = new CsvExtractor<ProductCsv>(
-                Path.Combine(_csvBasePath, "products.csv"), _logger);
-            var csvOrdenes = new CsvExtractor<OrderCsv>(
-                Path.Combine(_csvBasePath, "orders.csv"), _logger);
-            var csvDetalles = new CsvExtractor<OrderDetailCsv>(
-                Path.Combine(_csvBasePath, "order_details.csv"), _logger);
-
-            var clientesCsv = csvClientes.ExtractAsync().GetAwaiter().GetResult();
-            var productosCsv = csvProductos.ExtractAsync().GetAwaiter().GetResult();
-            var ordenesCsv = csvOrdenes.ExtractAsync().GetAwaiter().GetResult();
-            var detallesCsv = csvDetalles.ExtractAsync().GetAwaiter().GetResult();
-
-            // 2. PROCESAMIENTO ODS - CLIENTES
-            _logger.LogInformation("Procesando clientes ODS...");
-            var clientesValidos = new HashSet<int>();
-            int clientesInsertados = 0, clientesRechazados = 0;
-
-            foreach (var c in clientesCsv)
-            {
-                totalProcesados++;
-                var cliente = ClienteTransformer.Transformar(c, idFuenteClientes);
-                if (cliente == null || _repo.ExisteCliente(cliente.IdCliente) ||
-                    (cliente.Email != null && _repo.ExisteEmailCliente(cliente.Email)))
-                { clientesRechazados++; continue; }
-
-                _repo.InsertCliente(cliente);
-                clientesValidos.Add(cliente.IdCliente);
-                clientesInsertados++;
-            }
-            totalInsertados += clientesInsertados;
-            totalRechazados += clientesRechazados;
-            _logger.LogInformation("Clientes ODS -> insertados: {ins}, rechazados: {rej}",
-                clientesInsertados, clientesRechazados);
-
-            // 3. PROCESAMIENTO ODS - PRODUCTOS
-            _logger.LogInformation("Procesando productos ODS...");
-            var productoTransformer = new ProductoTransformer(_repo);
-            var productosValidos = new HashSet<int>();
-            int productosInsertados = 0, productosRechazados = 0;
-
-            foreach (var p in productosCsv)
-            {
-                totalProcesados++;
-                var producto = productoTransformer.Transformar(p, idFuenteProductos);
-                if (producto == null || _repo.ExisteProducto(producto.IdProducto))
-                { productosRechazados++; continue; }
-
-                _repo.InsertProducto(producto);
-                productosValidos.Add(producto.IdProducto);
-                productosInsertados++;
-            }
-            totalInsertados += productosInsertados;
-            totalRechazados += productosRechazados;
-            _logger.LogInformation("Productos ODS -> insertados: {ins}, rechazados: {rej}",
-                productosInsertados, productosRechazados);
-
-            // 4. PROCESAMIENTO ODS - VENTAS
-            _logger.LogInformation("Procesando ventas ODS...");
-            var ventas = VentaTransformer.TransformarTodas(
-                ordenesCsv, detallesCsv, clientesValidos, productosValidos, idFuenteVentas,
-                out int rechazadosCancelado, out int rechazadosReferencia);
-
-            int ventasInsertadas = 0;
-            foreach (var venta in ventas)
-            { _repo.InsertVenta(venta); ventasInsertadas++; }
-
-            totalProcesados += detallesCsv.Count;
-            totalInsertados += ventasInsertadas;
-            totalRechazados += (rechazadosCancelado + rechazadosReferencia);
-            _logger.LogInformation("Ventas ODS -> insertadas: {ins}, rechazadas: {rej}",
-                ventasInsertadas, rechazadosCancelado + rechazadosReferencia);
-
-            // 5. CARGA DE DIMENSIONES Y TABLA DE HECHOS AL DATA WAREHOUSE (DW)
-            _logger.LogInformation("Iniciando carga de Dimensiones al Data Warehouse...");
+            // Carga de dimensiones en VentasDW usando la data relacional de AnalyticDB
             CargarDataWarehouse();
 
             _repo.ActualizarLogFin(idLog, totalProcesados, totalInsertados, totalRechazados, "COMPLETADO");
-            _logger.LogInformation("Proceso ETL finalizado con éxito. Total procesados: {p}, insertados: {i}, rechazados: {r}",
-                totalProcesados, totalInsertados, totalRechazados);
+            _logger.LogInformation("Proceso ETL finalizado con éxito.");
         }
         catch (Exception ex)
         {
             _repo.ActualizarLogFin(idLog, totalProcesados, totalInsertados, totalRechazados, "ERROR", ex.Message);
-            _logger.LogError(ex, "Error durante el proceso ETL");
+            _logger.LogError(ex, "Error durante la ejecución del proceso ETL");
         }
     }
 
     private void CargarDataWarehouse()
     {
-        // 5.1 Carga DimFuenteDatos
+        // 1. Carga Dim_Fuente
         var fuentes = _repo.ObtenerFuentesDatos();
         foreach (var f in fuentes)
         {
@@ -142,18 +84,18 @@ public class EtlRunner
             var dimFuente = DimensionTransformer.TransformarDimFuente(f, nombreTipo);
             _repo.UpsertDimFuenteDatos(dimFuente);
         }
-        _logger.LogInformation("DimFuenteDatos cargada.");
+        _logger.LogInformation("Dim_Fuente cargada.");
 
-        // 5.2 Carga DimCliente
+        // 2. Carga Dim_Cliente
         var clientes = _repo.ObtenerClientes();
         foreach (var c in clientes)
         {
             var dimCliente = DimensionTransformer.TransformarDimCliente(c);
             _repo.UpsertDimCliente(dimCliente);
         }
-        _logger.LogInformation("DimCliente cargada.");
+        _logger.LogInformation("Dim_Cliente cargada.");
 
-        // 5.3 Carga DimProducto
+        // 3. Carga Dim_Producto
         var productos = _repo.ObtenerProductos();
         foreach (var p in productos)
         {
@@ -161,13 +103,13 @@ public class EtlRunner
             var dimProducto = DimensionTransformer.TransformarDimProducto(p, nombreCat);
             _repo.UpsertDimProducto(dimProducto);
         }
-        _logger.LogInformation("DimProducto cargada.");
+        _logger.LogInformation("Dim_Producto cargada.");
 
-        // 5.4 Carga DimTiempo & FactVentas
+        // 4. Carga Dim_Tiempo y Fact_Ventas
         var ventas = _repo.ObtenerVentas();
         foreach (var v in ventas)
         {
-            // DimTiempo
+            // Dim_Tiempo
             var dimTiempo = DimensionTransformer.TransformarDimTiempo(v.Fecha);
             _repo.UpsertDimTiempo(dimTiempo);
 
@@ -175,7 +117,7 @@ public class EtlRunner
             int clienteKey = _repo.GetClienteKeyByOrigen(v.IdCliente);
             int productoKey = _repo.GetProductoKeyByOrigen(v.IdProducto);
             int fuenteKey = _repo.GetFuenteKeyByOrigen(fuentes.FirstOrDefault()?.IdFuente ?? 1);
-            int tiempoKey = dimTiempo.TiempoKey;
+            int tiempoKey = dimTiempo.IdTiempoKey;
 
             if (clienteKey > 0 && productoKey > 0)
             {
@@ -183,6 +125,6 @@ public class EtlRunner
                 _repo.InsertFactVentas(factVenta);
             }
         }
-        _logger.LogInformation("DimTiempo y FactVentas cargadas exitosamente.");
+        _logger.LogInformation("Dim_Tiempo y Fact_Ventas cargadas exitosamente en VentasDW.");
     }
 }

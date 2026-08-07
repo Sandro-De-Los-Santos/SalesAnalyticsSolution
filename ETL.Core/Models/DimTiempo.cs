@@ -2,7 +2,7 @@ namespace ETL.Core.Models
 {
     public class DimTiempo
     {
-        public int TiempoKey { get; set; } // Formato YYYYMMDD (ej. 20260806)
+        public int IdTiempoKey { get; set; }
         public DateTime Fecha { get; set; }
         public int Anio { get; set; }
         public int Trimestre { get; set; }
@@ -10,6 +10,5 @@ namespace ETL.Core.Models
         public string NombreMes { get; set; } = string.Empty;
         public int Dia { get; set; }
         public string DiaSemana { get; set; } = string.Empty;
-        public bool EsFinDeSemana { get; set; }
     }
 }
