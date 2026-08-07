@@ -32,133 +32,89 @@ public class Worker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var cronometroTotal = Stopwatch.StartNew();
+        string connStr = _config.GetConnectionString("AnalyticDB")
+            ?? throw new InvalidOperationException("Cadena de conexión 'AnalyticDB' no encontrada en appsettings.json.");
+        string basePath = _config["CsvSettings:BasePath"] ?? "CsvFiles";
 
-        _logger.LogInformation("════════════════════════════════════════════════════════");
-        _logger.LogInformation("   SISTEMA ETL - SalesAnalyticsSolution");
-        _logger.LogInformation("   Inicio del proceso: {time}", DateTimeOffset.Now);
-        _logger.LogInformation("════════════════════════════════════════════════════════");
+        var repo      = new Repository(connStr);
+        var runnerLog = _loggerFactory.CreateLogger<EtlRunner>();
 
-        try
-        {
-            // ==================================================================
-            // FASE 1: EXTRACCION DESDE ARCHIVOS CSV
-            // ==================================================================
-            _logger.LogInformation("");
-            _logger.LogInformation("────────────────────────────────────────────────────────");
-            _logger.LogInformation("  [FASE 1] EXTRACCION DESDE ARCHIVOS CSV");
-            _logger.LogInformation("────────────────────────────────────────────────────────");
+        // =================================================================
+        // PROCESO 1: EXTRACCION DE DATOS DESDE TODAS LAS FUENTES
+        // =================================================================
+        _logger.LogInformation("=== PROCESO 1: EXTRACCION DE DATOS ===");
+        var sw1 = Stopwatch.StartNew();
 
-            string basePath = _config["CsvSettings:BasePath"] ?? "CsvFiles";
-            var sw1 = Stopwatch.StartNew();
+        // --- Fuente 1: Archivos CSV ---
+        _logger.LogInformation("Iniciando extraccion CSV: {path}", basePath);
 
-            var csvClientes = new CsvExtractor<CustomerCsv>(
-                Path.Combine(basePath, _config["CsvSettings:Clientes"] ?? "customers.csv"),
-                _loggerFactory.CreateLogger("CSV-Clientes"));
+        var csvClientes  = new CsvExtractor<CustomerCsv>(Path.Combine(basePath, _config["CsvSettings:Clientes"]  ?? "customers.csv"),     _loggerFactory.CreateLogger("CsvExtractor<Cliente>"));
+        var csvProductos = new CsvExtractor<ProductCsv>( Path.Combine(basePath, _config["CsvSettings:Productos"] ?? "products.csv"),      _loggerFactory.CreateLogger("CsvExtractor<Producto>"));
+        var csvOrdenes   = new CsvExtractor<OrderCsv>(   Path.Combine(basePath, _config["CsvSettings:Ordenes"]   ?? "orders.csv"),        _loggerFactory.CreateLogger("CsvExtractor<Orden>"));
+        var csvDetalles  = new CsvExtractor<OrderDetailCsv>(Path.Combine(basePath, _config["CsvSettings:DetalleOrdenes"] ?? "order_details.csv"), _loggerFactory.CreateLogger("CsvExtractor<DetalleOrden>"));
 
-            var csvProductos = new CsvExtractor<ProductCsv>(
-                Path.Combine(basePath, _config["CsvSettings:Productos"] ?? "products.csv"),
-                _loggerFactory.CreateLogger("CSV-Productos"));
+        var tCli = csvClientes.ExtractAsync(stoppingToken);
+        var tPro = csvProductos.ExtractAsync(stoppingToken);
+        var tOrd = csvOrdenes.ExtractAsync(stoppingToken);
+        var tDet = csvDetalles.ExtractAsync(stoppingToken);
+        await Task.WhenAll(tCli, tPro, tOrd, tDet);
 
-            var csvOrdenes = new CsvExtractor<OrderCsv>(
-                Path.Combine(basePath, _config["CsvSettings:Ordenes"] ?? "orders.csv"),
-                _loggerFactory.CreateLogger("CSV-Ordenes"));
+        await _stagingWriter.GuardarAsync("clientes_csv",       tCli.Result, stoppingToken);
+        await _stagingWriter.GuardarAsync("productos_csv",      tPro.Result, stoppingToken);
+        await _stagingWriter.GuardarAsync("ordenes_csv",        tOrd.Result, stoppingToken);
+        await _stagingWriter.GuardarAsync("detalle_ordenes_csv",tDet.Result, stoppingToken);
 
-            var csvDetalles = new CsvExtractor<OrderDetailCsv>(
-                Path.Combine(basePath, _config["CsvSettings:DetalleOrdenes"] ?? "order_details.csv"),
-                _loggerFactory.CreateLogger("CSV-DetalleOrdenes"));
+        int totalCsv = tCli.Result.Count + tPro.Result.Count + tOrd.Result.Count + tDet.Result.Count;
 
-            var tClientesCsv  = csvClientes.ExtractAsync(stoppingToken);
-            var tProductosCsv = csvProductos.ExtractAsync(stoppingToken);
-            var tOrdenesCsv   = csvOrdenes.ExtractAsync(stoppingToken);
-            var tDetallesCsv  = csvDetalles.ExtractAsync(stoppingToken);
+        // --- Fuente 2: API Externa ---
+        _logger.LogInformation("Iniciando extraccion API: {endpoint}", _config["ApiSettings:ClientesEndpoint"]);
 
-            await Task.WhenAll(tClientesCsv, tProductosCsv, tOrdenesCsv, tDetallesCsv);
-            sw1.Stop();
+        var apiClientes   = new ApiExtractor<ClienteApiRaw>(
+            _httpClientFactory.CreateClient("ExternalApi"),
+            _config["ApiSettings:ClientesEndpoint"] ?? "users",
+            _loggerFactory.CreateLogger("ApiExtractor<Cliente>"));
 
-            _logger.LogInformation("  >> customers.csv     → {n} registros extraídos", tClientesCsv.Result.Count);
-            _logger.LogInformation("  >> products.csv      → {n} registros extraídos", tProductosCsv.Result.Count);
-            _logger.LogInformation("  >> orders.csv        → {n} registros extraídos", tOrdenesCsv.Result.Count);
-            _logger.LogInformation("  >> order_details.csv → {n} registros extraídos", tDetallesCsv.Result.Count);
-            _logger.LogInformation("  [FASE 1] COMPLETADA en {ms} ms", sw1.ElapsedMilliseconds);
+        var resultadoApi = await apiClientes.ExtractAsync(stoppingToken);
 
-            await _stagingWriter.GuardarAsync("clientes_csv",      tClientesCsv.Result,  stoppingToken);
-            await _stagingWriter.GuardarAsync("productos_csv",     tProductosCsv.Result, stoppingToken);
-            await _stagingWriter.GuardarAsync("ordenes_csv",       tOrdenesCsv.Result,   stoppingToken);
-            await _stagingWriter.GuardarAsync("detalle_ordenes_csv", tDetallesCsv.Result, stoppingToken);
+        if (resultadoApi.Count > 0)
+            await _stagingWriter.GuardarAsync("clientes_api", resultadoApi, stoppingToken);
 
-            // ==================================================================
-            // FASE 2: EXTRACCION DESDE API EXTERNA (modo demostración)
-            // ==================================================================
-            _logger.LogInformation("");
-            _logger.LogInformation("────────────────────────────────────────────────────────");
-            _logger.LogInformation("  [FASE 2] EXTRACCION DESDE API EXTERNA");
-            _logger.LogInformation("────────────────────────────────────────────────────────");
+        // --- Fuente 3: Base de Datos Relacional AnalyticDB ---
+        _logger.LogInformation("Iniciando extraccion BD: AnalyticDB");
 
-            var sw2 = Stopwatch.StartNew();
-            var apiClientes = new ApiExtractor<ClienteApiRaw>(
-                _httpClientFactory.CreateClient("ExternalApi"),
-                _config["ApiSettings:ClientesEndpoint"] ?? "users",
-                _loggerFactory.CreateLogger("API-Clientes"));
+        int nClientes   = repo.ContarClientesAnalytic();
+        int nProductos  = repo.ContarProductosAnalytic();
+        int nCategorias = repo.ContarCategoriasAnalytic();
+        int nVentas     = repo.ContarVentasAnalytic();
+        int nFuentes    = repo.ContarFuentesAnalytic();
 
-            var resultadoApi = await apiClientes.ExtractAsync(stoppingToken);
-            sw2.Stop();
+        _logger.LogInformation("Extraccion BD completada: AnalyticDB.Clientes    -> {n} registros", nClientes);
+        _logger.LogInformation("Extraccion BD completada: AnalyticDB.Productos   -> {n} registros", nProductos);
+        _logger.LogInformation("Extraccion BD completada: AnalyticDB.Categorias  -> {n} registros", nCategorias);
+        _logger.LogInformation("Extraccion BD completada: AnalyticDB.Ventas      -> {n} registros", nVentas);
+        _logger.LogInformation("Extraccion BD completada: AnalyticDB.FuenteDatos -> {n} registros", nFuentes);
 
-            _logger.LogInformation("  >> API ({endpoint})  → {n} registros extraídos",
-                _config["ApiSettings:ClientesEndpoint"] ?? "users", resultadoApi.Count);
+        int totalBd = nClientes + nProductos + nCategorias + nVentas + nFuentes;
 
-            if (resultadoApi.Count > 0)
-            {
-                _logger.LogInformation("  [INFO] Se encontraron datos en la API. En una versión futura se integrarían a AnalyticDB.");
-                await _stagingWriter.GuardarAsync("clientes_api", resultadoApi, stoppingToken);
-            }
-            else
-            {
-                _logger.LogInformation("  [INFO] La API externa no retornó datos en este ciclo. No se carga nada del API.");
-            }
+        sw1.Stop();
+        _logger.LogInformation("=== Extraccion completada en {ms} ms | CSV: {csv} | API: {api} | BD: {bd} registros ===",
+            sw1.ElapsedMilliseconds, totalCsv, resultadoApi.Count, totalBd);
 
-            _logger.LogInformation("  [FASE 2] COMPLETADA en {ms} ms", sw2.ElapsedMilliseconds);
+        // =================================================================
+        // PROCESO 2: CARGA DE DIMENSIONES AnalyticDB → VentasDW
+        // =================================================================
+        _logger.LogInformation("=== PROCESO 2: CARGA DE DIMENSIONES → VentasDW ===");
+        var sw2 = Stopwatch.StartNew();
 
-            // ==================================================================
-            // FASE 3: EXTRACCION DESDE BASE DE DATOS RELACIONAL (AnalyticDB)
-            //         y CARGA DE DIMENSIONES EN EL DATA WAREHOUSE (VentasDW)
-            // ==================================================================
-            _logger.LogInformation("");
-            _logger.LogInformation("────────────────────────────────────────────────────────");
-            _logger.LogInformation("  [FASE 3] EXTRACCION DESDE AnalyticDB → CARGA EN VentasDW");
-            _logger.LogInformation("────────────────────────────────────────────────────────");
+        var etlRunner = new EtlRunner(runnerLog, basePath, connStr);
+        etlRunner.CargarSoloDataWarehouse();
 
-            string connStr = _config.GetConnectionString("AnalyticDB")
-                ?? throw new InvalidOperationException("Cadena de conexión 'AnalyticDB' no encontrada en appsettings.json.");
+        var resumenDW = repo.ObtenerResumenDW();
+        sw2.Stop();
 
-            var sw3 = Stopwatch.StartNew();
-            var runnerLogger = _loggerFactory.CreateLogger<EtlRunner>();
-            var etlRunner = new EtlRunner(runnerLogger, basePath, connStr);
-
-            etlRunner.CargarSoloDataWarehouse();
-            sw3.Stop();
-
-            _logger.LogInformation("  [FASE 3] COMPLETADA en {ms} ms", sw3.ElapsedMilliseconds);
-
-            // ==================================================================
-            // RESUMEN FINAL
-            // ==================================================================
-            cronometroTotal.Stop();
-            _logger.LogInformation("");
-            _logger.LogInformation("════════════════════════════════════════════════════════");
-            _logger.LogInformation("  RESUMEN FINAL DEL PROCESO ETL");
-            _logger.LogInformation("  Fase 1 - CSV       : {c} clientes, {p} productos, {o} órdenes, {d} detalles",
-                tClientesCsv.Result.Count, tProductosCsv.Result.Count,
-                tOrdenesCsv.Result.Count, tDetallesCsv.Result.Count);
-            _logger.LogInformation("  Fase 2 - API       : {a} registros extraídos (no cargados al DW)", resultadoApi.Count);
-            _logger.LogInformation("  Fase 3 - AnalyticDB: Dimensiones cargadas en VentasDW ✔");
-            _logger.LogInformation("  Tiempo total       : {ms} ms", cronometroTotal.ElapsedMilliseconds);
-            _logger.LogInformation("════════════════════════════════════════════════════════");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error durante la ejecución del proceso ETL");
-        }
+        _logger.LogInformation("=== Carga de dimensiones completada en {ms} ms | {r} ===",
+            sw2.ElapsedMilliseconds,
+            string.Join(" | ", resumenDW.Select(kv => $"{kv.Key}: {kv.Value}")));
 
         _lifetime.StopApplication();
     }

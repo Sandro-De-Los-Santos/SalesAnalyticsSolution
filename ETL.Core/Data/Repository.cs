@@ -348,12 +348,19 @@ namespace ETL.Core.Data
         public Dictionary<string, int> ObtenerResumenDW()
         {
             var resumen = new Dictionary<string, int>();
-            resumen["Dim_Cliente"] = Convert.ToInt32(ConsultarEscalar("SELECT COUNT(1) FROM [VentasDW].[dbo].[Dim_Cliente]") ?? 0);
+            resumen["Dim_Cliente"]  = Convert.ToInt32(ConsultarEscalar("SELECT COUNT(1) FROM [VentasDW].[dbo].[Dim_Cliente]") ?? 0);
             resumen["Dim_Producto"] = Convert.ToInt32(ConsultarEscalar("SELECT COUNT(1) FROM [VentasDW].[dbo].[Dim_Producto]") ?? 0);
-            resumen["Dim_Fuente"] = Convert.ToInt32(ConsultarEscalar("SELECT COUNT(1) FROM [VentasDW].[dbo].[Dim_Fuente]") ?? 0);
-            resumen["Dim_Tiempo"] = Convert.ToInt32(ConsultarEscalar("SELECT COUNT(1) FROM [VentasDW].[dbo].[Dim_Tiempo]") ?? 0);
-            resumen["Fact_Ventas"] = Convert.ToInt32(ConsultarEscalar("SELECT COUNT(1) FROM [VentasDW].[dbo].[Fact_Ventas]") ?? 0);
+            resumen["Dim_Fuente"]   = Convert.ToInt32(ConsultarEscalar("SELECT COUNT(1) FROM [VentasDW].[dbo].[Dim_Fuente]") ?? 0);
+            resumen["Dim_Tiempo"]   = Convert.ToInt32(ConsultarEscalar("SELECT COUNT(1) FROM [VentasDW].[dbo].[Dim_Tiempo]") ?? 0);
+            resumen["Fact_Ventas"]  = Convert.ToInt32(ConsultarEscalar("SELECT COUNT(1) FROM [VentasDW].[dbo].[Fact_Ventas]") ?? 0);
             return resumen;
         }
+
+        // Conteos rapidos de AnalyticDB (para reporte de extraccion)
+        public int ContarClientesAnalytic()    => Convert.ToInt32(ConsultarEscalar("SELECT COUNT(1) FROM [AnalyticDB].[dbo].[Clientes]") ?? 0);
+        public int ContarProductosAnalytic()   => Convert.ToInt32(ConsultarEscalar("SELECT COUNT(1) FROM [AnalyticDB].[dbo].[Productos]") ?? 0);
+        public int ContarCategoriasAnalytic()  => Convert.ToInt32(ConsultarEscalar("SELECT COUNT(1) FROM [AnalyticDB].[dbo].[Categorias]") ?? 0);
+        public int ContarVentasAnalytic()      => Convert.ToInt32(ConsultarEscalar("SELECT COUNT(1) FROM [AnalyticDB].[dbo].[Ventas]") ?? 0);
+        public int ContarFuentesAnalytic()     => Convert.ToInt32(ConsultarEscalar("SELECT COUNT(1) FROM [AnalyticDB].[dbo].[FuenteDatos]") ?? 0);
     }
 }

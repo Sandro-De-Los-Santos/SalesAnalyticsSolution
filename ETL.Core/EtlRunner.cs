@@ -78,53 +78,64 @@ public class EtlRunner
     {
         // 1. Carga Dim_Fuente
         var fuentes = _repo.ObtenerFuentesDatos();
+        _logger.LogInformation("  [DW] Dim_Fuente  <- AnalyticDB.FuenteDatos : {n} registros a procesar", fuentes.Count);
+        int cargadasFuente = 0;
         foreach (var f in fuentes)
         {
             string nombreTipo = _repo.GetNombreTipoFuente(f.IdTipoFuente);
             var dimFuente = DimensionTransformer.TransformarDimFuente(f, nombreTipo);
             _repo.UpsertDimFuenteDatos(dimFuente);
+            cargadasFuente++;
         }
-        _logger.LogInformation("Dim_Fuente cargada.");
+        _logger.LogInformation("  [DW] Dim_Fuente  -> {n} registros cargados en VentasDW", cargadasFuente);
 
         // 2. Carga Dim_Cliente
         var clientes = _repo.ObtenerClientes();
+        _logger.LogInformation("  [DW] Dim_Cliente <- AnalyticDB.Clientes    : {n} registros a procesar", clientes.Count);
+        int cargadasCliente = 0;
         foreach (var c in clientes)
         {
             var dimCliente = DimensionTransformer.TransformarDimCliente(c);
             _repo.UpsertDimCliente(dimCliente);
+            cargadasCliente++;
         }
-        _logger.LogInformation("Dim_Cliente cargada.");
+        _logger.LogInformation("  [DW] Dim_Cliente -> {n} registros cargados en VentasDW", cargadasCliente);
 
         // 3. Carga Dim_Producto
         var productos = _repo.ObtenerProductos();
+        _logger.LogInformation("  [DW] Dim_Producto <- AnalyticDB.Productos  : {n} registros a procesar", productos.Count);
+        int cargadasProducto = 0;
         foreach (var p in productos)
         {
             string nombreCat = _repo.GetNombreCategoria(p.IdCategoria.GetValueOrDefault());
             var dimProducto = DimensionTransformer.TransformarDimProducto(p, nombreCat);
             _repo.UpsertDimProducto(dimProducto);
+            cargadasProducto++;
         }
-        _logger.LogInformation("Dim_Producto cargada.");
+        _logger.LogInformation("  [DW] Dim_Producto -> {n} registros cargados en VentasDW", cargadasProducto);
 
         // 4. Carga Dim_Tiempo y Fact_Ventas
         var ventas = _repo.ObtenerVentas();
+        _logger.LogInformation("  [DW] Dim_Tiempo + Fact_Ventas <- AnalyticDB.Ventas : {n} registros a procesar", ventas.Count);
+        int cargadasFact = 0;
         foreach (var v in ventas)
         {
-            // Dim_Tiempo
             var dimTiempo = DimensionTransformer.TransformarDimTiempo(v.Fecha);
             _repo.UpsertDimTiempo(dimTiempo);
 
-            // Lookup Keys
-            int clienteKey = _repo.GetClienteKeyByOrigen(v.IdCliente);
+            int clienteKey  = _repo.GetClienteKeyByOrigen(v.IdCliente);
             int productoKey = _repo.GetProductoKeyByOrigen(v.IdProducto);
-            int fuenteKey = _repo.GetFuenteKeyByOrigen(fuentes.FirstOrDefault()?.IdFuente ?? 1);
-            int tiempoKey = dimTiempo.IdTiempoKey;
+            int fuenteKey   = _repo.GetFuenteKeyByOrigen(fuentes.FirstOrDefault()?.IdFuente ?? 1);
+            int tiempoKey   = dimTiempo.IdTiempoKey;
 
             if (clienteKey > 0 && productoKey > 0)
             {
                 var factVenta = DimensionTransformer.CrearFactVenta(v, clienteKey, productoKey, fuenteKey, tiempoKey);
                 _repo.InsertFactVentas(factVenta);
+                cargadasFact++;
             }
         }
-        _logger.LogInformation("Dim_Tiempo y Fact_Ventas cargadas exitosamente en VentasDW.");
+        _logger.LogInformation("  [DW] Dim_Tiempo  -> registros de fechas unicas cargados en VentasDW");
+        _logger.LogInformation("  [DW] Fact_Ventas -> {n} registros cargados en VentasDW", cargadasFact);
     }
 }
