@@ -1,12 +1,27 @@
 -- ============================================================================
 -- SCRIPT DE CREACION Y CARGA DE DIMENSIONES Y TABLA DE HECHOS PARA DATAWAREHOUSE
 -- Proyecto: SalesAnalyticsSolution
+-- ODS Database: AnalyticDB | DW Database: VentasDW (o SalesAnalyticsDB)
 -- ============================================================================
 
-USE [SalesAnalyticsDB];
+IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = 'AnalyticDB')
+BEGIN
+    CREATE DATABASE [AnalyticDB];
+END;
 GO
 
--- 1. TABLAS ODS / STAGING
+IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = 'VentasDW')
+BEGIN
+    CREATE DATABASE [VentasDW];
+END;
+GO
+
+-- ----------------------------------------------------------------------------
+-- 1. BASE DE DATOS RELACIONAL / ODS (AnalyticDB)
+-- ----------------------------------------------------------------------------
+USE [AnalyticDB];
+GO
+
 IF OBJECT_ID('Ventas', 'U') IS NOT NULL DROP TABLE Ventas;
 IF OBJECT_ID('Productos', 'U') IS NOT NULL DROP TABLE Productos;
 IF OBJECT_ID('Clientes', 'U') IS NOT NULL DROP TABLE Clientes;
@@ -79,7 +94,76 @@ CREATE TABLE LogCargaETL (
 );
 GO
 
--- 2. TABLAS DEL DATA WAREHOUSE (ESQUEMA EN ESTRELLA / DIMENSIONES Y HECHOS)
+-- STORED PROCEDURES PARA ODS (AnalyticDB)
+CREATE OR ALTER PROCEDURE sp_InsertTipoFuente
+    @IdTipoFuente INT, @Nombre VARCHAR(100), @Descripcion VARCHAR(255)
+AS BEGIN
+    INSERT INTO TipoFuente (IdTipoFuente, Nombre, Descripcion) VALUES (@IdTipoFuente, @Nombre, @Descripcion);
+END;
+GO
+
+CREATE OR ALTER PROCEDURE sp_InsertFuenteDatos
+    @IdFuente INT, @NombreFuente VARCHAR(150), @Descripcion VARCHAR(255), @FechaRegistro DATETIME, @IdTipoFuente INT
+AS BEGIN
+    INSERT INTO FuenteDatos (IdFuente, NombreFuente, Descripcion, FechaRegistro, IdTipoFuente)
+    VALUES (@IdFuente, @NombreFuente, @Descripcion, @FechaRegistro, @IdTipoFuente);
+END;
+GO
+
+CREATE OR ALTER PROCEDURE sp_InsertCategoria
+    @IdCategoria INT, @Nombre VARCHAR(100), @Descripcion VARCHAR(255)
+AS BEGIN
+    INSERT INTO Categorias (IdCategoria, Nombre, Descripcion) VALUES (@IdCategoria, @Nombre, @Descripcion);
+END;
+GO
+
+CREATE OR ALTER PROCEDURE sp_InsertCliente
+    @IdCliente INT, @Nombre VARCHAR(150), @Email VARCHAR(150), @Region VARCHAR(100), @Activo BIT, @FuenteOrigen VARCHAR(150), @FechaCarga DATETIME
+AS BEGIN
+    INSERT INTO Clientes (IdCliente, Nombre, Email, Region, Activo, FuenteOrigen, FechaCarga)
+    VALUES (@IdCliente, @Nombre, @Email, @Region, @Activo, @FuenteOrigen, @FechaCarga);
+END;
+GO
+
+CREATE OR ALTER PROCEDURE sp_InsertProducto
+    @IdProducto INT, @Nombre VARCHAR(150), @Precio DECIMAL(18,2), @Activo BIT, @FuenteOrigen VARCHAR(150), @FechaCarga DATETIME, @IdCategoria INT
+AS BEGIN
+    INSERT INTO Productos (IdProducto, Nombre, Precio, Activo, FuenteOrigen, FechaCarga, IdCategoria)
+    VALUES (@IdProducto, @Nombre, @Precio, @Activo, @FuenteOrigen, @FechaCarga, @IdCategoria);
+END;
+GO
+
+CREATE OR ALTER PROCEDURE sp_InsertVenta
+    @IdVenta INT, @IdCliente INT, @IdProducto INT, @Cantidad INT, @Precio DECIMAL(18,2), @Fecha DATETIME, @FuenteOrigen VARCHAR(150), @FechaCarga DATETIME
+AS BEGIN
+    INSERT INTO Ventas (IdVenta, IdCliente, IdProducto, Cantidad, Precio, Fecha, FuenteOrigen, FechaCarga)
+    VALUES (@IdVenta, @IdCliente, @IdProducto, @Cantidad, @Precio, @Fecha, @FuenteOrigen, @FechaCarga);
+END;
+GO
+
+CREATE OR ALTER PROCEDURE sp_InsertLogInicio
+    @IdLog INT, @IdFuente INT, @FechaInicio DATETIME
+AS BEGIN
+    INSERT INTO LogCargaETL (IdLog, IdFuente, FechaInicio, Estado) VALUES (@IdLog, @IdFuente, @FechaInicio, 'EN_PROCESO');
+END;
+GO
+
+CREATE OR ALTER PROCEDURE sp_ActualizarLogFin
+    @IdLog INT, @FechaFin DATETIME, @Procesados INT, @Insertados INT, @Rechazados INT, @Estado VARCHAR(50), @MensajeError VARCHAR(MAX) = NULL
+AS BEGIN
+    UPDATE LogCargaETL 
+    SET FechaFin = @FechaFin, Procesados = @Procesados, Insertados = @Insertados, Rechazados = @Rechazados, Estado = @Estado, MensajeError = @MensajeError
+    WHERE IdLog = @IdLog;
+END;
+GO
+
+
+-- ----------------------------------------------------------------------------
+-- 2. BASE DE DATOS DATA WAREHOUSE (VentasDW)
+-- ----------------------------------------------------------------------------
+USE [VentasDW];
+GO
+
 IF OBJECT_ID('FactVentas', 'U') IS NOT NULL DROP TABLE FactVentas;
 IF OBJECT_ID('DimFuenteDatos', 'U') IS NOT NULL DROP TABLE DimFuenteDatos;
 IF OBJECT_ID('DimCliente', 'U') IS NOT NULL DROP TABLE DimCliente;
@@ -143,70 +227,7 @@ CREATE TABLE FactVentas (
 );
 GO
 
--- 3. STORED PROCEDURES PARA ODS Y DW
-CREATE OR ALTER PROCEDURE sp_InsertTipoFuente
-    @IdTipoFuente INT, @Nombre VARCHAR(100), @Descripcion VARCHAR(255)
-AS BEGIN
-    INSERT INTO TipoFuente (IdTipoFuente, Nombre, Descripcion) VALUES (@IdTipoFuente, @Nombre, @Descripcion);
-END;
-GO
-
-CREATE OR ALTER PROCEDURE sp_InsertFuenteDatos
-    @IdFuente INT, @NombreFuente VARCHAR(150), @Descripcion VARCHAR(255), @FechaRegistro DATETIME, @IdTipoFuente INT
-AS BEGIN
-    INSERT INTO FuenteDatos (IdFuente, NombreFuente, Descripcion, FechaRegistro, IdTipoFuente)
-    VALUES (@IdFuente, @NombreFuente, @Descripcion, @FechaRegistro, @IdTipoFuente);
-END;
-GO
-
-CREATE OR ALTER PROCEDURE sp_InsertCategoria
-    @IdCategoria INT, @Nombre VARCHAR(100), @Descripcion VARCHAR(255)
-AS BEGIN
-    INSERT INTO Categorias (IdCategoria, Nombre, Descripcion) VALUES (@IdCategoria, @Nombre, @Descripcion);
-END;
-GO
-
-CREATE OR ALTER PROCEDURE sp_InsertCliente
-    @IdCliente INT, @Nombre VARCHAR(150), @Email VARCHAR(150), @Region VARCHAR(100), @Activo BIT, @FuenteOrigen VARCHAR(150), @FechaCarga DATETIME
-AS BEGIN
-    INSERT INTO Clientes (IdCliente, Nombre, Email, Region, Activo, FuenteOrigen, FechaCarga)
-    VALUES (@IdCliente, @Nombre, @Email, @Region, @Activo, @FuenteOrigen, @FechaCarga);
-END;
-GO
-
-CREATE OR ALTER PROCEDURE sp_InsertProducto
-    @IdProducto INT, @Nombre VARCHAR(150), @Precio DECIMAL(18,2), @Activo BIT, @FuenteOrigen VARCHAR(150), @FechaCarga DATETIME, @IdCategoria INT
-AS BEGIN
-    INSERT INTO Productos (IdProducto, Nombre, Precio, Activo, FuenteOrigen, FechaCarga, IdCategoria)
-    VALUES (@IdProducto, @Nombre, @Precio, @Activo, @FuenteOrigen, @FechaCarga, @IdCategoria);
-END;
-GO
-
-CREATE OR ALTER PROCEDURE sp_InsertVenta
-    @IdVenta INT, @IdCliente INT, @IdProducto INT, @Cantidad INT, @Precio DECIMAL(18,2), @Fecha DATETIME, @FuenteOrigen VARCHAR(150), @FechaCarga DATETIME
-AS BEGIN
-    INSERT INTO Ventas (IdVenta, IdCliente, IdProducto, Cantidad, Precio, Fecha, FuenteOrigen, FechaCarga)
-    VALUES (@IdVenta, @IdCliente, @IdProducto, @Cantidad, @Precio, @Fecha, @FuenteOrigen, @FechaCarga);
-END;
-GO
-
-CREATE OR ALTER PROCEDURE sp_InsertLogInicio
-    @IdLog INT, @IdFuente INT, @FechaInicio DATETIME
-AS BEGIN
-    INSERT INTO LogCargaETL (IdLog, IdFuente, FechaInicio, Estado) VALUES (@IdLog, @IdFuente, @FechaInicio, 'EN_PROCESO');
-END;
-GO
-
-CREATE OR ALTER PROCEDURE sp_ActualizarLogFin
-    @IdLog INT, @FechaFin DATETIME, @Procesados INT, @Insertados INT, @Rechazados INT, @Estado VARCHAR(50), @MensajeError VARCHAR(MAX) = NULL
-AS BEGIN
-    UPDATE LogCargaETL 
-    SET FechaFin = @FechaFin, Procesados = @Procesados, Insertados = @Insertados, Rechazados = @Rechazados, Estado = @Estado, MensajeError = @MensajeError
-    WHERE IdLog = @IdLog;
-END;
-GO
-
--- PROCEDIMIENTOS DW (UPSERT DE DIMENSIONES)
+-- PROCEDIMIENTOS ALMACENADOS PARA VENTASDW
 CREATE OR ALTER PROCEDURE sp_UpsertDimFuenteDatos
     @IdFuenteOrigen INT, @NombreFuente VARCHAR(150), @Descripcion VARCHAR(255), @TipoFuente VARCHAR(100), @FechaRegistro DATETIME, @FechaCarga DATETIME
 AS BEGIN
